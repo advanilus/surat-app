@@ -6,19 +6,20 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-export const uploadToCloudinary = (fileBuffer: Buffer, folder = 'surat-app'): Promise<{ url: string; public_id: string }> => {
+export const uploadToCloudinary = (buffer: Buffer, folder: string): Promise<any> => {
   return new Promise((resolve, reject) => {
     const uploadStream = cloudinary.uploader.upload_stream(
-      { folder, resource_type: 'auto' },
+      {
+        folder: folder,
+        resource_type: 'auto', // <--- KUNCI PERBAIKAN: Deteksi otomatis PDF & Gambar
+      },
       (error, result) => {
-        if (error || !result) return reject(error);
-        resolve({
-          url: result.secure_url,
-          public_id: result.public_id,
-        });
+        if (error) return reject(error);
+        resolve(result);
       }
     );
-    uploadStream.end(fileBuffer);
+
+    uploadStream.end(buffer);
   });
 };
 
