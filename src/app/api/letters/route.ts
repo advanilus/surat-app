@@ -20,14 +20,37 @@ export async function GET() {
 // POST: Tambah Surat Baru & Upload File ke Cloudinary
 export async function POST(request: Request) {
   try {
-    const formData = await request.formData();
+    const contentType = request.headers.get('content-type') || '';
+    
+    let nomor_surat = '';
+    let perihal = '';
+    let kategori = 'MASUK';
+    let pengirim = '';
+    let penerima = '';
+    let file: File | null = null;
 
-    const nomor_surat = formData.get('nomor_surat') as string;
-    const perihal = formData.get('perihal') as string;
-    const kategori = (formData.get('kategori') as string) || 'MASUK';
-    const pengirim = (formData.get('pengirim') as string) || '';
-    const penerima = (formData.get('penerima') as string) || '';
-    const file = formData.get('file') as File | null;
+    // Pembacaan data fleksibel (FormData atau JSON)
+    if (contentType.includes('multipart/form-data') || contentType.includes('application/x-www-form-urlencoded')) {
+      const formData = await request.formData();
+      nomor_surat = (formData.get('nomor_surat') || formData.get('no_surat') || formData.get('number') || formData.get('nomor')) as string || '';
+      perihal = (formData.get('perihal') || formData.get('subject') || formData.get('title')) as string || '';
+      kategori = (formData.get('kategori') || formData.get('type') || 'MASUK') as string;
+      pengirim = (formData.get('pengirim') || formData.get('sender') || '') as string;
+      penerima = (formData.get('penerima') || formData.get('receiver') || '') as string;
+      file = formData.get('file') as File | null;
+    } else {
+      const body = await request.json();
+      nomor_surat = body.nomor_surat || body.no_surat || body.number || body.nomor || '';
+      perihal = body.perihal || body.subject || body.title || '';
+      kategori = body.kategori || body.type || 'MASUK';
+      pengirim = body.pengirim || body.sender || '';
+      penerima = body.penerima || body.receiver || '';
+    }
+
+    // Validasi: Cegah error database jika nomor surat/perihal kosong
+    if (!nomor_surat || nomor_surat.trim() === '') {
+      return NextResponse.json({ success: false, error: 'Nomor surat wajib diisi.' }, { status: 400 });
+    }
 
     let file_url = '';
     let file_public_id = '';
@@ -41,7 +64,7 @@ export async function POST(request: Request) {
       file_public_id = uploadResult.public_id;
     }
 
-    // Simpan Baris Baru ke Supabase
+    // Simpan ke Supabase
     const { data, error } = await supabase
       .from('surat')
       .insert([
