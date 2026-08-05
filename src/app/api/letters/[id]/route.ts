@@ -5,10 +5,11 @@ import cloudinary from '@/lib/cloudinary';
 // GET: Ambil Detail 1 Surat Berdasarkan ID
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params;
+    const { id } = await params;
+
     const { data, error } = await supabase
       .from('surat')
       .select('*')
@@ -25,12 +26,12 @@ export async function GET(
 // DELETE: Hapus Surat Berdasarkan ID (+ Hapus File di Cloudinary)
 export async function DELETE(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params;
+    const { id } = await params;
 
-    // 1. Cari data surat dulu untuk ambil file_public_id
+    // 1. Cari data surat dulu untuk mengambil file_public_id
     const { data: currentData } = await supabase
       .from('surat')
       .select('file_public_id')
@@ -42,7 +43,7 @@ export async function DELETE(
       await cloudinary.uploader.destroy(currentData.file_public_id);
     }
 
-    // 3. Hapus baris dari Supabase
+    // 3. Hapus baris data dari Supabase
     const { error } = await supabase.from('surat').delete().eq('id', id);
 
     if (error) throw error;
