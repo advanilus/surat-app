@@ -58,7 +58,7 @@ export async function POST(request: Request) {
         formData.get('category') ||
         formData.get('type') ||
         'MASUK'
-      ) as string;
+      ).toString();
 
       pengirim = (
         formData.get('pengirim') ||
@@ -81,9 +81,15 @@ export async function POST(request: Request) {
 
       nomor_surat = body.nomor_surat || body.nomorSurat || body.no_surat || body.noSurat || body.nomor || body.no || body.number || body.letterNumber || '';
       perihal = body.perihal || body.subject || body.title || '';
-      kategori = body.kategori || body.category || body.type || 'MASUK';
+      kategori = (body.kategori || body.category || body.type || 'MASUK').toString();
       pengirim = body.pengirim || body.sender || body.from || '';
       penerima = body.penerima || body.receiver || body.to || '';
+    }
+
+    // Normalisasi Kategori ke Huruf Kapital & Batasi Pilihan ke 'MASUK' atau 'KELUAR'
+    kategori = kategori.toUpperCase();
+    if (kategori !== 'KELUAR') {
+      kategori = 'MASUK';
     }
 
     if (!nomor_surat || nomor_surat.trim() === '') {
