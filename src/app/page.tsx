@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import {
-  Mail, Plus, Inbox, Send, Calendar, Tag, Search, RefreshCw,
+  Mail, Plus, Inbox, Send, Calendar, Tag, Search,
   FileText, Paperclip, Download, Printer, Trash2, Edit2, X, BarChart3, LayoutDashboard
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
@@ -37,13 +37,28 @@ export default function HomePage() {
   const [file, setFile] = useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Ambil data dari API
+  // Ambil data dari API & Normalisasi Kolom Supabase
   const fetchLetters = async () => {
     setLoading(true);
     try {
       const res = await fetch('/api/letters');
       const json = await res.json();
-      if (json.success) setLetters(json.data);
+      
+      if (json.success && Array.isArray(json.data)) {
+        // Mapping kolom database Supabase ke struktur interface frontend
+        const normalizedData: Letter[] = json.data.map((item: any) => ({
+          id: item.id,
+          type: (item.kategori || item.type || 'MASUK').toString().toUpperCase() as 'MASUK' | 'KELUAR',
+          letter_number: item.nomor_surat || item.letter_number || '',
+          subject: item.perihal || item.subject || '',
+          sender: item.pengirim || item.sender || '',
+          recipient: item.penerima || item.recipient || '',
+          letter_date: item.created_at ? item.created_at.split('T')[0] : (item.letter_date || new Date().toISOString().split('T')[0]),
+          file_path: item.file_url || item.file_path || '',
+          created_at: item.created_at || '',
+        }));
+        setLetters(normalizedData);
+      }
     } catch (err) {
       console.error('Gagal memuat data:', err);
     } finally {
@@ -61,12 +76,19 @@ export default function HomePage() {
     setIsSubmitting(true);
 
     const formData = new FormData();
+    // Kirim kunci bahasa Indonesia & Inggris agar kompatibel penuh dengan API backend
     formData.append('type', type);
+    formData.append('kategori', type);
     formData.append('letter_number', letterNumber);
+    formData.append('nomor_surat', letterNumber);
     formData.append('subject', subject);
+    formData.append('perihal', subject);
     formData.append('sender', sender);
+    formData.append('pengirim', sender);
     formData.append('recipient', recipient);
+    formData.append('penerima', recipient);
     formData.append('letter_date', letterDate);
+    
     if (file) formData.append('file', file);
 
     try {
@@ -80,10 +102,11 @@ export default function HomePage() {
         resetForm();
         fetchLetters();
       } else {
-        alert(json.error || 'Terjadi kesalahan');
+        alert(json.error || 'Terjadi kesalahan saat menyimpan surat');
       }
     } catch (err) {
       console.error('Error:', err);
+      alert('Gagal menghubungkan ke server.');
     } finally {
       setIsSubmitting(false);
     }
@@ -97,7 +120,7 @@ export default function HomePage() {
     setSubject(letter.subject || '');
     setSender(letter.sender || '');
     setRecipient(letter.recipient || '');
-    setLetterDate(letter.letter_date);
+    setLetterDate(letter.letter_date || new Date().toISOString().split('T')[0]);
     setFile(null);
   };
 
@@ -120,7 +143,7 @@ export default function HomePage() {
       const res = await fetch(`/api/letters/${id}`, { method: 'DELETE' });
       const json = await res.json();
       if (json.success) fetchLetters();
-      else alert(json.error);
+      else alert(json.error || 'Gagal menghapus data');
     } catch (err) {
       console.error('Error deleting:', err);
     }
@@ -139,10 +162,12 @@ export default function HomePage() {
       l.letter_date,
     ]);
 
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
+    // Tambahkan \uFEFF (UTF-8 BOM) agar format dibaca sempurna oleh Microsoft Excel
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
+    link.setAttribute('href', url);
     link.setAttribute('download', `rekap_agenda_surat_${new Date().toISOString().split('T')[0]}.csv`);
     document.body.appendChild(link);
     link.click();
@@ -166,17 +191,24 @@ export default function HomePage() {
     const masuk = letters.filter((l) => l.type === 'MASUK').length;
     const keluar = letters.filter((l) => l.type === 'KELUAR').length;
 
-    // Olah data bulanan
+    // Olah data bulanan untuk grafik
     const monthlyData: Record<string, { month: string; MASUK: number; KELUAR: number }> = {};
     letters.forEach((l) => {
-      const month = l.letter_date ? l.letter_date.substring(0, 7) : 'Lainnya';
-      if (!monthlyData[month]) {
-        monthlyData[month] = { month, MASUK: 0, KELUAR: 0 };
+      let monthLabel = 'Lainnya';
+      if (l.letter_date) {
+        const d = new Date(l.letter_date);
+        if (!isNaN(d.getTime())) {
+          monthLabel = d.toLocaleString('id-ID', { month: 'short', year: '2-digit' }); // Contoh: "Jan 26"
+        }
       }
-      monthlyData[month][l.type]++;
+      
+      if (!monthlyData[monthLabel]) {
+        monthlyData[monthLabel] = { month: monthLabel, MASUK: 0, KELUAR: 0 };
+      }
+      monthlyData[monthLabel][l.type]++;
     });
 
-    const chartData = Object.values(monthlyData).sort((a, b) => a.month.localeCompare(b.month));
+    const chartData = Object.values(monthlyData);
     return { total, masuk, keluar, chartData };
   }, [letters]);
 
@@ -255,7 +287,7 @@ export default function HomePage() {
                     <BarChart data={stats.chartData}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                       <XAxis dataKey="month" stroke="#94a3b8" fontSize={12} />
-                      <YAxis stroke="#94a3b8" fontSize={12} />
+                      <YAxis stroke="#94a3b8" fontSize={12} allowDecimals={false} />
                       <Tooltip />
                       <Bar dataKey="MASUK" name="Surat Masuk" fill="#10b981" radius={[4, 4, 0, 0]} />
                       <Bar dataKey="KELUAR" name="Surat Keluar" fill="#3b82f6" radius={[4, 4, 0, 0]} />
@@ -286,7 +318,7 @@ export default function HomePage() {
               </div>
 
               <form onSubmit={handleSubmit} className="space-y-4">
-                {/* Switch Tipo */}
+                {/* Switch Tipe */}
                 <div>
                   <label className="block text-xs font-semibold text-slate-500 uppercase mb-2">Jenis Surat</label>
                   <div className="grid grid-cols-2 gap-2">
@@ -294,7 +326,7 @@ export default function HomePage() {
                       type="button"
                       onClick={() => setType('MASUK')}
                       className={`flex items-center justify-center gap-2 py-2 rounded-lg border font-medium text-xs transition ${
-                        type === 'MASUK' ? 'bg-emerald-50 border-emerald-500 text-emerald-700' : 'border-slate-200 text-slate-600'
+                        type === 'MASUK' ? 'bg-emerald-50 border-emerald-500 text-emerald-700 font-bold' : 'border-slate-200 text-slate-600'
                       }`}
                     >
                       <Inbox className="w-4 h-4" /> Surat Masuk
@@ -303,7 +335,7 @@ export default function HomePage() {
                       type="button"
                       onClick={() => setType('KELUAR')}
                       className={`flex items-center justify-center gap-2 py-2 rounded-lg border font-medium text-xs transition ${
-                        type === 'KELUAR' ? 'bg-blue-50 border-blue-500 text-blue-700' : 'border-slate-200 text-slate-600'
+                        type === 'KELUAR' ? 'bg-blue-50 border-blue-500 text-blue-700 font-bold' : 'border-slate-200 text-slate-600'
                       }`}
                     >
                       <Send className="w-4 h-4" /> Surat Keluar
@@ -452,7 +484,7 @@ export default function HomePage() {
                 </div>
               </div>
 
-              {/* Tampilan Cetak Header (Hanya muncul saat di-print) */}
+              {/* Tampilan Cetak Header */}
               <div className="hidden print:block text-center mb-6">
                 <h2 className="text-xl font-bold uppercase">REKAP AGENDA SURAT MASUK & SURAT KELUAR</h2>
                 <p className="text-sm">Dicetak Pada: {new Date().toLocaleDateString('id-ID')}</p>
