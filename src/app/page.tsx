@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   Mail, Plus, Inbox, Send, Calendar, Tag, Search,
-  FileText, Paperclip, Download, Printer, Trash2, Edit2, X, BarChart3, LayoutDashboard
+  FileText, Paperclip, Download, Printer, Trash2, Edit2, X, BarChart3, LayoutDashboard, LogOut
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 
@@ -20,6 +21,7 @@ interface Letter {
 }
 
 export default function HomePage() {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<'dashboard' | 'agenda'>('agenda');
   const [letters, setLetters] = useState<Letter[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -37,7 +39,7 @@ export default function HomePage() {
   const [file, setFile] = useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Ambil data dari API & Normalisasi Kolom Supabase
+  // Ambil Data dari API
   const fetchLetters = async () => {
     setLoading(true);
     try {
@@ -45,7 +47,6 @@ export default function HomePage() {
       const json = await res.json();
       
       if (json.success && Array.isArray(json.data)) {
-        // Mapping kolom database Supabase ke struktur interface frontend
         const normalizedData: Letter[] = json.data.map((item: any) => ({
           id: item.id,
           type: (item.kategori || item.type || 'MASUK').toString().toUpperCase() as 'MASUK' | 'KELUAR',
@@ -53,7 +54,7 @@ export default function HomePage() {
           subject: item.perihal || item.subject || '',
           sender: item.pengirim || item.sender || '',
           recipient: item.penerima || item.recipient || '',
-          letter_date: item.created_at ? item.created_at.split('T')[0] : (item.letter_date || new Date().toISOString().split('T')[0]),
+          letter_date: item.tanggal_surat || (item.created_at ? item.created_at.split('T')[0] : new Date().toISOString().split('T')[0]),
           file_path: item.file_url || item.file_path || '',
           created_at: item.created_at || '',
         }));
@@ -70,13 +71,26 @@ export default function HomePage() {
     fetchLetters();
   }, []);
 
+  // Fungsi Logout
+  const handleLogout = async () => {
+    if (!confirm('Apakah Anda yakin ingin keluar dari aplikasi?')) return;
+
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch (err) {
+      console.error('Gagal logout:', err);
+    }
+
+    router.push('/login');
+    router.refresh();
+  };
+
   // Submit Simpan / Edit
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
 
     const formData = new FormData();
-    // Kirim kunci bahasa Indonesia & Inggris agar kompatibel penuh dengan API backend
     formData.append('type', type);
     formData.append('kategori', type);
     formData.append('letter_number', letterNumber);
@@ -88,6 +102,7 @@ export default function HomePage() {
     formData.append('recipient', recipient);
     formData.append('penerima', recipient);
     formData.append('letter_date', letterDate);
+    formData.append('tanggal_surat', letterDate);
     
     if (file) formData.append('file', file);
 
@@ -106,7 +121,7 @@ export default function HomePage() {
       }
     } catch (err) {
       console.error('Error:', err);
-      alert('Gagal menghubungkan ke server.');
+      alert('Gagal terhubung ke server.');
     } finally {
       setIsSubmitting(false);
     }
@@ -162,7 +177,6 @@ export default function HomePage() {
       l.letter_date,
     ]);
 
-    // Tambahkan \uFEFF (UTF-8 BOM) agar format dibaca sempurna oleh Microsoft Excel
     const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -191,14 +205,13 @@ export default function HomePage() {
     const masuk = letters.filter((l) => l.type === 'MASUK').length;
     const keluar = letters.filter((l) => l.type === 'KELUAR').length;
 
-    // Olah data bulanan untuk grafik
     const monthlyData: Record<string, { month: string; MASUK: number; KELUAR: number }> = {};
     letters.forEach((l) => {
       let monthLabel = 'Lainnya';
       if (l.letter_date) {
         const d = new Date(l.letter_date);
         if (!isNaN(d.getTime())) {
-          monthLabel = d.toLocaleString('id-ID', { month: 'short', year: '2-digit' }); // Contoh: "Jan 26"
+          monthLabel = d.toLocaleString('id-ID', { month: 'short', year: '2-digit' });
         }
       }
       
@@ -216,7 +229,7 @@ export default function HomePage() {
     <main className="min-h-screen bg-slate-50 p-4 md:p-8">
       <div className="max-w-7xl mx-auto space-y-6">
 
-        {/* Header & Navigasi Tab */}
+        {/* Header & Navigasi Tab + Tombol Keluar */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm print:hidden">
           <div>
             <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
@@ -226,22 +239,34 @@ export default function HomePage() {
             <p className="text-slate-500 text-sm mt-1">Pencatatan, grafik statistik, dan arsip berkas digital</p>
           </div>
 
-          <div className="flex items-center gap-2 bg-slate-100 p-1.5 rounded-xl">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1.5 bg-slate-100 p-1.5 rounded-xl">
+              <button
+                onClick={() => setActiveTab('agenda')}
+                className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition ${
+                  activeTab === 'agenda' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <FileText className="w-4 h-4" /> Agenda Surat
+              </button>
+              <button
+                onClick={() => setActiveTab('dashboard')}
+                className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition ${
+                  activeTab === 'dashboard' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <LayoutDashboard className="w-4 h-4" /> Dashboard
+              </button>
+            </div>
+
+            {/* Tombol Keluar (Logout) */}
             <button
-              onClick={() => setActiveTab('agenda')}
-              className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition ${
-                activeTab === 'agenda' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'
-              }`}
+              onClick={handleLogout}
+              className="flex items-center gap-2 px-3.5 py-2 text-sm font-medium text-rose-600 hover:bg-rose-50 bg-white border border-rose-200 rounded-xl transition shadow-sm"
+              title="Keluar dari Aplikasi"
             >
-              <FileText className="w-4 h-4" /> Agenda Surat
-            </button>
-            <button
-              onClick={() => setActiveTab('dashboard')}
-              className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition ${
-                activeTab === 'dashboard' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <LayoutDashboard className="w-4 h-4" /> Dashboard
+              <LogOut className="w-4 h-4" />
+              <span className="hidden sm:inline">Keluar</span>
             </button>
           </div>
         </div>
@@ -249,7 +274,6 @@ export default function HomePage() {
         {/* TAB 1: DASHBOARD STATISTIK */}
         {activeTab === 'dashboard' && (
           <div className="space-y-6">
-            {/* Cards Ringkasan */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
                 <div>
@@ -274,7 +298,6 @@ export default function HomePage() {
               </div>
             </div>
 
-            {/* Grafik Recharts */}
             <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
               <h3 className="text-base font-semibold text-slate-800 mb-6 flex items-center gap-2">
                 <BarChart3 className="w-5 h-5 text-blue-600" /> Grafik Volume Surat Per Bulan
@@ -318,7 +341,6 @@ export default function HomePage() {
               </div>
 
               <form onSubmit={handleSubmit} className="space-y-4">
-                {/* Switch Tipe */}
                 <div>
                   <label className="block text-xs font-semibold text-slate-500 uppercase mb-2">Jenis Surat</label>
                   <div className="grid grid-cols-2 gap-2">
@@ -343,7 +365,6 @@ export default function HomePage() {
                   </div>
                 </div>
 
-                {/* Nomor Surat */}
                 <div>
                   <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Nomor Surat</label>
                   <div className="relative">
@@ -359,7 +380,6 @@ export default function HomePage() {
                   </div>
                 </div>
 
-                {/* Perihal */}
                 <div>
                   <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Perihal / Subjek</label>
                   <div className="relative">
@@ -375,7 +395,6 @@ export default function HomePage() {
                   </div>
                 </div>
 
-                {/* Pengirim & Penerima */}
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Pengirim</label>
@@ -399,7 +418,6 @@ export default function HomePage() {
                   </div>
                 </div>
 
-                {/* Tanggal Surat */}
                 <div>
                   <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Tanggal Surat</label>
                   <div className="relative">
@@ -413,7 +431,6 @@ export default function HomePage() {
                   </div>
                 </div>
 
-                {/* File Upload */}
                 <div>
                   <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Lampiran Berkas (PDF / Foto)</label>
                   <div className="relative">
@@ -441,7 +458,6 @@ export default function HomePage() {
             {/* Tabel Agenda Surat */}
             <div className="lg:col-span-2 space-y-4">
               
-              {/* Action Bar (Search, Filter, Export, Print) */}
               <div className="flex flex-col sm:flex-row gap-2 justify-between items-center print:hidden">
                 <div className="relative w-full sm:w-auto flex-1">
                   <Search className="w-4 h-4 absolute left-3.5 top-3.5 text-slate-400" />
@@ -455,7 +471,6 @@ export default function HomePage() {
                 </div>
 
                 <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-                  {/* Filter Status */}
                   <select
                     value={filterType}
                     onChange={(e) => setFilterType(e.target.value as 'ALL' | 'MASUK' | 'KELUAR')}
@@ -484,13 +499,11 @@ export default function HomePage() {
                 </div>
               </div>
 
-              {/* Tampilan Cetak Header */}
               <div className="hidden print:block text-center mb-6">
                 <h2 className="text-xl font-bold uppercase">REKAP AGENDA SURAT MASUK & SURAT KELUAR</h2>
                 <p className="text-sm">Dicetak Pada: {new Date().toLocaleDateString('id-ID')}</p>
               </div>
 
-              {/* List / Tabel Surat */}
               <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                 {loading ? (
                   <div className="p-8 text-center text-slate-400 text-sm">Memuat data agenda...</div>
@@ -523,7 +536,6 @@ export default function HomePage() {
                           </div>
                         </div>
 
-                        {/* Action Buttons */}
                         <div className="flex items-center gap-2 shrink-0 print:hidden">
                           {item.file_path && (
                             <a
