@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { uploadToCloudinary } from '@/lib/cloudinary';
 
-// GET: Ambil Semua Daftar Surat
 export async function GET() {
   try {
     const { data, error } = await supabase
@@ -17,11 +16,10 @@ export async function GET() {
   }
 }
 
-// POST: Tambah Surat Baru & Upload File ke Cloudinary
 export async function POST(request: Request) {
   try {
     const contentType = request.headers.get('content-type') || '';
-    
+
     let nomor_surat = '';
     let perihal = '';
     let kategori = 'MASUK';
@@ -29,25 +27,65 @@ export async function POST(request: Request) {
     let penerima = '';
     let file: File | null = null;
 
-    // Pembacaan data fleksibel (FormData atau JSON)
     if (contentType.includes('multipart/form-data') || contentType.includes('application/x-www-form-urlencoded')) {
       const formData = await request.formData();
-      nomor_surat = (formData.get('nomor_surat') || formData.get('no_surat') || formData.get('number') || formData.get('nomor')) as string || '';
-      perihal = (formData.get('perihal') || formData.get('subject') || formData.get('title')) as string || '';
-      kategori = (formData.get('kategori') || formData.get('type') || 'MASUK') as string;
-      pengirim = (formData.get('pengirim') || formData.get('sender') || '') as string;
-      penerima = (formData.get('penerima') || formData.get('receiver') || '') as string;
+      
+      // Mengambil semua kunci yang masuk untuk debug
+      const rawData: Record<string, any> = {};
+      formData.forEach((value, key) => { rawData[key] = value; });
+      console.log('FormData received:', rawData);
+
+      nomor_surat = (
+        formData.get('nomor_surat') ||
+        formData.get('nomorSurat') ||
+        formData.get('no_surat') ||
+        formData.get('noSurat') ||
+        formData.get('nomor') ||
+        formData.get('no') ||
+        formData.get('number') ||
+        formData.get('letterNumber') ||
+        formData.get('letter_number')
+      ) as string || '';
+
+      perihal = (
+        formData.get('perihal') ||
+        formData.get('subject') ||
+        formData.get('title')
+      ) as string || '';
+
+      kategori = (
+        formData.get('kategori') ||
+        formData.get('category') ||
+        formData.get('type') ||
+        'MASUK'
+      ) as string;
+
+      pengirim = (
+        formData.get('pengirim') ||
+        formData.get('sender') ||
+        formData.get('from') ||
+        ''
+      ) as string;
+
+      penerima = (
+        formData.get('penerima') ||
+        formData.get('receiver') ||
+        formData.get('to') ||
+        ''
+      ) as string;
+
       file = formData.get('file') as File | null;
     } else {
       const body = await request.json();
-      nomor_surat = body.nomor_surat || body.no_surat || body.number || body.nomor || '';
+      console.log('JSON Body received:', body);
+
+      nomor_surat = body.nomor_surat || body.nomorSurat || body.no_surat || body.noSurat || body.nomor || body.no || body.number || body.letterNumber || '';
       perihal = body.perihal || body.subject || body.title || '';
-      kategori = body.kategori || body.type || 'MASUK';
-      pengirim = body.pengirim || body.sender || '';
-      penerima = body.penerima || body.receiver || '';
+      kategori = body.kategori || body.category || body.type || 'MASUK';
+      pengirim = body.pengirim || body.sender || body.from || '';
+      penerima = body.penerima || body.receiver || body.to || '';
     }
 
-    // Validasi: Cegah error database jika nomor surat/perihal kosong
     if (!nomor_surat || nomor_surat.trim() === '') {
       return NextResponse.json({ success: false, error: 'Nomor surat wajib diisi.' }, { status: 400 });
     }
@@ -55,7 +93,6 @@ export async function POST(request: Request) {
     let file_url = '';
     let file_public_id = '';
 
-    // Upload File ke Cloudinary jika ada file yang diunggah
     if (file && file.size > 0) {
       const bytes = await file.arrayBuffer();
       const buffer = Buffer.from(bytes);
@@ -64,7 +101,6 @@ export async function POST(request: Request) {
       file_public_id = uploadResult.public_id;
     }
 
-    // Simpan ke Supabase
     const { data, error } = await supabase
       .from('surat')
       .insert([
