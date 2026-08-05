@@ -25,37 +25,30 @@ export async function POST(request: Request) {
     let kategori = 'MASUK';
     let pengirim = '';
     let penerima = '';
+    let tanggal_surat = '';
     let file: File | null = null;
 
     if (contentType.includes('multipart/form-data') || contentType.includes('application/x-www-form-urlencoded')) {
       const formData = await request.formData();
-      
-      // Mengambil semua kunci yang masuk untuk debug
-      const rawData: Record<string, any> = {};
-      formData.forEach((value, key) => { rawData[key] = value; });
-      console.log('FormData received:', rawData);
 
       nomor_surat = (
         formData.get('nomor_surat') ||
         formData.get('nomorSurat') ||
         formData.get('no_surat') ||
         formData.get('noSurat') ||
-        formData.get('nomor') ||
-        formData.get('no') ||
-        formData.get('number') ||
-        formData.get('letterNumber') ||
-        formData.get('letter_number')
-      ) as string || '';
+        formData.get('letter_number') ||
+        ''
+      ) as string;
 
       perihal = (
         formData.get('perihal') ||
         formData.get('subject') ||
-        formData.get('title')
-      ) as string || '';
+        formData.get('title') ||
+        ''
+      ) as string;
 
       kategori = (
         formData.get('kategori') ||
-        formData.get('category') ||
         formData.get('type') ||
         'MASUK'
       ).toString();
@@ -63,30 +56,36 @@ export async function POST(request: Request) {
       pengirim = (
         formData.get('pengirim') ||
         formData.get('sender') ||
-        formData.get('from') ||
         ''
       ) as string;
 
       penerima = (
         formData.get('penerima') ||
+        formData.get('recipient') ||
         formData.get('receiver') ||
-        formData.get('to') ||
+        ''
+      ) as string;
+
+      tanggal_surat = (
+        formData.get('tanggal_surat') ||
+        formData.get('letter_date') ||
+        formData.get('tanggal') ||
         ''
       ) as string;
 
       file = formData.get('file') as File | null;
     } else {
       const body = await request.json();
-      console.log('JSON Body received:', body);
 
-      nomor_surat = body.nomor_surat || body.nomorSurat || body.no_surat || body.noSurat || body.nomor || body.no || body.number || body.letterNumber || '';
+      nomor_surat = body.nomor_surat || body.nomorSurat || body.no_surat || body.letter_number || '';
       perihal = body.perihal || body.subject || body.title || '';
-      kategori = (body.kategori || body.category || body.type || 'MASUK').toString();
-      pengirim = body.pengirim || body.sender || body.from || '';
-      penerima = body.penerima || body.receiver || body.to || '';
+      kategori = (body.kategori || body.type || 'MASUK').toString();
+      pengirim = body.pengirim || body.sender || '';
+      penerima = body.penerima || body.recipient || body.receiver || '';
+      tanggal_surat = body.tanggal_surat || body.letter_date || body.tanggal || '';
     }
 
-    // Normalisasi Kategori ke Huruf Kapital & Batasi Pilihan ke 'MASUK' atau 'KELUAR'
+    // Normalisasi Kategori ke 'MASUK' atau 'KELUAR'
     kategori = kategori.toUpperCase();
     if (kategori !== 'KELUAR') {
       kategori = 'MASUK';
@@ -107,19 +106,24 @@ export async function POST(request: Request) {
       file_public_id = uploadResult.public_id;
     }
 
+    // Buat objek insert yang fleksibel
+    const payload: Record<string, any> = {
+      nomor_surat,
+      perihal,
+      kategori,
+      pengirim,
+      penerima,
+      file_url,
+      file_public_id,
+    };
+
+    if (tanggal_surat) {
+      payload.tanggal_surat = tanggal_surat;
+    }
+
     const { data, error } = await supabase
       .from('surat')
-      .insert([
-        {
-          nomor_surat,
-          perihal,
-          kategori,
-          pengirim,
-          penerima,
-          file_url,
-          file_public_id,
-        },
-      ])
+      .insert([payload])
       .select();
 
     if (error) throw error;
