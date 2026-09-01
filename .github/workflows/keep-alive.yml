@@ -1,0 +1,29 @@
+name: Supabase Database Keep Alive
+
+on:
+  schedule:
+    # Berjalan 2x sehari (07:00 WIB & 19:00 WIB)
+    - cron: '0 0,12 * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      # 1. Ping Langsung ke Server Supabase surat-app-db (Pasti tercatat di API Gateway Supabase)
+      - name: Ping Supabase REST API Langsung
+        run: |
+          curl -s -X GET "https://hmslgnqfqxgoerpuzgid.supabase.co/rest/v1/" \
+            -H "apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhtc2xnbnFmcXhnb2VycHV6Z2lkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU4OTIyMzAsImV4cCI6MjEwMTQ2ODIzMH0.R7Zv_Bm6ozLLEXWVk6lC116Xp4KnX7Gns2L76jcYPuo" \
+            -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhtc2xnbnFmcXhnb2VycHV6Z2lkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU4OTIyMzAsImV4cCI6MjEwMTQ2ODIzMH0.R7Zv_Bm6ozLLEXWVk6lC116Xp4KnX7Gns2L76jcYPuo"
+
+      # 2. Ping Health Check Supabase
+      - name: Ping Supabase Auth Health
+        run: |
+          curl -s -X GET "https://hmslgnqfqxgoerpuzgid.supabase.co/auth/v1/health" \
+            -H "apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhtc2xnbnFmcXhnb2VycHV6Z2lkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU4OTIyMzAsImV4cCI6MjEwMTQ2ODIzMH0.R7Zv_Bm6ozLLEXWVk6lC116Xp4KnX7Gns2L76jcYPuo"
+
+      # 3. Ping Display Utama Vercel (Backup)
+      - name: Ping Vercel Display
+        run: |
+          curl -s -X GET "https://displayutama.vercel.app/api/config"
